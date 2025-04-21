@@ -1,0 +1,42 @@
+/* Estilos generales */
+  body {
+    font-family: 'Arial', sans-serif;
+    line-height: 1.6;
+  }
+
+.navbar-default {
+  background-color: #2c3e50 !important;
+    border-color: #2c3e50 !important;
+}
+
+.navbar-default .navbar-brand {
+  color: #ecf0f1 !important;
+}
+
+.btn-primary {
+  background-color: #3498db !important;
+    border-color: #2980b9 !important;
+}
+
+/* Paneles */
+  .well {
+    background-color: #ecf0f1;
+      border-radius: 5px;
+  }
+
+/* Resultados */
+  .alert-info {
+    background-color: #d9edf7;
+      border-color: #bce8f1;
+      color: #31708f;
+      padding: 15px;
+    border-radius: 4px;
+  }
+
+/* Gráficos */
+  .shiny-plot-output {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+  }
+
