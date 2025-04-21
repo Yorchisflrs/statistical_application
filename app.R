@@ -1,18 +1,20 @@
 # ---------------------------
 # LIBRERÍAS REQUERIDAS
 # ---------------------------
-library(shiny)
-library(shinythemes)
-library(readr)
-library(readxl)
-library(ggplot2)
-library(DT)
-library(report)
-library(stats)
-library(effectsize)
-library(rstatix)
-library(DescTools)
-library(car) # Para prueba de Levene
+libs <- c("shiny", "shinythemes", "readr", "readxl", "ggplot2", "DT", "report", "stats", "effectsize", "rstatix", "DescTools", "car")
+lapply(libs, library, character.only = TRUE)
+
+# ---------------------------
+# FUNCIONES AUXILIARES
+# ---------------------------
+# Función para generar selectInput dinámico
+select_var <- function(id, label, vars, multiple=FALSE) selectInput(id, label, choices=vars, multiple=multiple)
+
+# Función para obtener tipo de variable
+get_types <- function(df) sapply(df, function(x) if(is.numeric(x)) "Cuantitativa" else "Cualitativa")
+
+# Función para resumen descriptivo
+resumen <- function(var) list(Media=mean(var,na.rm=T), Mediana=median(var,na.rm=T), Moda=unique(var)[which.max(tabulate(match(var,unique(var))))], Mínimo=min(var,na.rm=T), Máximo=max(var,na.rm=T), Rango=diff(range(var,na.rm=T)), Desv_Est=sd(var,na.rm=T), Coef_Var=sd(var,na.rm=T)/mean(var,na.rm=T)*100)
 
 # ---------------------------
 # INTERFAZ DE USUARIO (UI)
@@ -23,125 +25,73 @@ ui <- navbarPage(
   
   # Pestaña 1: Carga de Datos
   tabPanel("Cargar Datos",
-           sidebarLayout(
-             sidebarPanel(
-               fileInput("file", "Sube tu archivo", 
-                         accept = c(".csv", ".xlsx", ".txt")),
-               radioButtons("sep", "Separador (CSV/TXT):", 
-                            choices = c(Coma = ",", PuntoComa = ";", Tabulador = "\t"),
-                            selected = ","),
-               radioButtons("dec", "Decimal:", 
-                            choices = c(Punto = ".", Coma = ","),
-                            selected = "."),
-               actionButton("load_sample", "Cargar Datos de Ejemplo", class = "btn-info")
-             ),
-             mainPanel(
-               DTOutput("data_preview"),
-               uiOutput("data_summary")
-             )
-           )),
+    sidebarLayout(
+      sidebarPanel(
+        fileInput("file", "Sube tu archivo", accept = c(".csv", ".xlsx", ".txt")),
+        radioButtons("sep", "Separador (CSV/TXT):", choices = c(Coma=",", PuntoComa=";", Tabulador="\t"), selected=","),
+        radioButtons("dec", "Decimal:", choices = c(Punto=".", Coma=","), selected="."),
+        actionButton("load_sample", "Cargar Datos de Ejemplo", class="btn-info")
+      ),
+      mainPanel(DTOutput("data_preview"), uiOutput("data_summary"))
+    )
+  ),
   
   # Pestaña 2: Análisis Cuantitativo
   tabPanel("Cuantitativas",
-           sidebarLayout(
-             sidebarPanel(
-               uiOutput("quant_var_selector"),
-               selectInput("quant_test", "Prueba Estadística:", 
-                           choices = c("Seleccione..." = "", 
-                                       "t-test", 
-                                       "ANOVA", 
-                                       "Wilcoxon",
-                                       "Pearson",
-                                       "Spearman",
-                                       "Shapiro-Wilk", 
-                                       "Kolmogorov-Smirnov",
-                                       "Kruskal-Wallis",
-                                       "Friedman")),
-               conditionalPanel(
-                 condition = "input.quant_test == 't-test' | input.quant_test == 'ANOVA' | input.quant_test == 'Wilcoxon' | input.quant_test == 'Kruskal-Wallis'",
-                 uiOutput("group_var_selector")
-               ),
-               conditionalPanel(
-                 condition = "input.quant_test == 'Pearson' | input.quant_test == 'Spearman'",
-                 uiOutput("quant_var2_selector")
-               ),
-               actionButton("run_quant", "Ejecutar Análisis", class = "btn-primary")
-             ),
-             mainPanel(
-               uiOutput("quant_theory"),
-               h3("Medidas Descriptivas"),
-               tableOutput("descriptive_stats"),
-               h3("Resultado de la Prueba"),
-               verbatimTextOutput("quant_results"),
-               h3("Interpretación Estadística"),
-               uiOutput("quant_interpretation"),
-               h3("Gráfico Inferencial"),
-               plotOutput("quant_plot"),
-               h3("Validación de Supuestos"),
-               uiOutput("test_assumptions"),
-               h3("Efectos Principales e Interacciones"),
-               tableOutput("anova_effects"),
-               h3("Post-hoc"),
-               tableOutput("anova_posthoc")
-             )
-           )),
+    sidebarLayout(
+      sidebarPanel(
+        uiOutput("quant_var_selector"),
+        selectInput("quant_test", "Prueba Estadística:", choices = c("Seleccione..."="", "t-test", "ANOVA", "Wilcoxon", "Pearson", "Spearman", "Shapiro-Wilk", "Kolmogorov-Smirnov", "Kruskal-Wallis", "Friedman")),
+        conditionalPanel("input.quant_test=='t-test'|input.quant_test=='ANOVA'|input.quant_test=='Wilcoxon'|input.quant_test=='Kruskal-Wallis'", uiOutput("group_var_selector")),
+        conditionalPanel("input.quant_test=='Pearson'|input.quant_test=='Spearman'", uiOutput("quant_var2_selector")),
+        actionButton("run_quant", "Ejecutar Análisis", class="btn-primary")
+      ),
+      mainPanel(
+        uiOutput("quant_theory"), h3("Medidas Descriptivas"), tableOutput("descriptive_stats"),
+        h3("Resultado de la Prueba"), verbatimTextOutput("quant_results"),
+        h3("Interpretación Estadística"), uiOutput("quant_interpretation"),
+        h3("Gráfico Inferencial"), plotOutput("quant_plot"),
+        h3("Validación de Supuestos"), uiOutput("test_assumptions"),
+        h3("Efectos Principales e Interacciones"), tableOutput("anova_effects"),
+        h3("Post-hoc"), tableOutput("anova_posthoc")
+      )
+    )
+  ),
   
   # Pestaña 3: Análisis Cualitativo
   tabPanel("Cualitativas",
-           sidebarLayout(
-             sidebarPanel(
-               uiOutput("qual_var_selector"),
-               selectInput("qual_test", "Prueba Estadística:", 
-                           choices = c("Seleccione..." = "", 
-                                       "Chi-cuadrado", 
-                                       "Fisher", 
-                                       "Binomial",
-                                       "Coef.Contingencia",
-                                       "G-test",
-                                       "McNemar",
-                                       "Cochran-Q")),
-               conditionalPanel(
-                 condition = "input.qual_test != 'Binomial'",
-                 uiOutput("qual_var2_selector")
-               ),
-               actionButton("run_qual", "Ejecutar Análisis", class = "btn-primary")
-             ),
-             mainPanel(
-               uiOutput("qual_theory"),
-               h3("Distribución de Frecuencias"),
-               tableOutput("freq_table"),
-               h3("Resultado de la Prueba"),
-               verbatimTextOutput("qual_results"),
-               h3("Interpretación Estadística"),
-               uiOutput("qual_interpretation"),
-               h3("Visualización"),
-               plotOutput("qual_plot"),
-               h3("Validación de Supuestos"),
-               uiOutput("qual_assumptions")
-             )
-           )),
+    sidebarLayout(
+      sidebarPanel(
+        uiOutput("qual_var_selector"),
+        selectInput("qual_test", "Prueba Estadística:", choices = c("Seleccione..."="", "Chi-cuadrado", "Fisher", "Binomial", "Coef.Contingencia", "G-test", "McNemar", "Cochran-Q")),
+        conditionalPanel("input.qual_test!='Binomial'", uiOutput("qual_var2_selector")),
+        actionButton("run_qual", "Ejecutar Análisis", class="btn-primary")
+      ),
+      mainPanel(
+        uiOutput("qual_theory"), h3("Distribución de Frecuencias"), tableOutput("freq_table"),
+        h3("Resultado de la Prueba"), verbatimTextOutput("qual_results"),
+        h3("Interpretación Estadística"), uiOutput("qual_interpretation"),
+        h3("Visualización"), plotOutput("qual_plot"),
+        h3("Validación de Supuestos"), uiOutput("qual_assumptions")
+      )
+    )
+  ),
   
   # Pestaña 4: Teorema Límite Central
   tabPanel("TLC",
-           sidebarLayout(
-             sidebarPanel(
-               numericInput("n_samples", "Número de muestras:", 100, min = 30),
-               numericInput("sample_size", "Tamaño de muestra:", 30, min = 10),
-               selectInput("dist_type", "Distribución:", 
-                           choices = c("Normal", "Exponencial", "Uniforme")),
-               actionButton("run_clt", "Simular", class = "btn-success")
-             ),
-             mainPanel(
-               plotOutput("clt_plot"),
-               htmlOutput("clt_explanation"),
-               h3("Estadísticos Descriptivos"),
-               verbatimTextOutput("clt_stats")
-             )
-           )),
+    sidebarLayout(
+      sidebarPanel(
+        numericInput("n_samples", "Número de muestras:", 100, min=30),
+        numericInput("sample_size", "Tamaño de muestra:", 30, min=10),
+        selectInput("dist_type", "Distribución:", choices=c("Normal", "Exponencial", "Uniforme")),
+        actionButton("run_clt", "Simular", class="btn-success")
+      ),
+      mainPanel(plotOutput("clt_plot"), htmlOutput("clt_explanation"), h3("Estadísticos Descriptivos"), verbatimTextOutput("clt_stats"))
+    )
+  ),
   
   # Pestaña 5: Documentación
-  tabPanel("Guía",
-           includeMarkdown("www/instructions.md"))
+  tabPanel("Guía", includeMarkdown("www/instructions.md"))
 )
 
 # ---------------------------
@@ -204,9 +154,7 @@ server <- function(input, output, session) {
   
   var_types <- reactive({
     req(data())
-    sapply(data(), function(x) {
-      if (is.numeric(x)) "Cuantitativa" else "Cualitativa"
-    })
+    get_types(data())
   })
   
   # ---------------------------
@@ -234,7 +182,7 @@ server <- function(input, output, session) {
     req(data())
     quant_vars <- names(data())[var_types() == "Cuantitativa"]
     tagList(
-      selectInput("quant_var", "Variable numérica:", choices = quant_vars),
+      select_var("quant_var", "Variable numérica:", quant_vars),
       addTooltip("quant_var", "Selecciona la variable dependiente numérica.")
     )
   })
@@ -242,7 +190,7 @@ server <- function(input, output, session) {
   output$quant_var2_selector <- renderUI({
     req(data())
     quant_vars <- names(data())[var_types() == "Cuantitativa"]
-    selectInput("quant_var2", "Segunda variable:", choices = setdiff(quant_vars, input$quant_var))
+    select_var("quant_var2", "Segunda variable:", setdiff(quant_vars, input$quant_var))
   })
   
   output$group_var_selector <- renderUI({
@@ -250,12 +198,12 @@ server <- function(input, output, session) {
     qual_vars <- names(data())[var_types() == "Cualitativa"]
     if (input$quant_test == "ANOVA") {
       tagList(
-        selectInput("group_var", "Variables de agrupación (factores):", choices = qual_vars, multiple = TRUE),
+        select_var("group_var", "Variables de agrupación (factores):", qual_vars, multiple = TRUE),
         checkboxInput("anova_inter", "Incluir interacciones (A*B)", value = FALSE),
         addTooltip("group_var", "Selecciona uno o más factores (variables cualitativas)")
       )
     } else {
-      selectInput("group_var", "Variable de agrupación:", choices = qual_vars)
+      select_var("group_var", "Variable de agrupación:", qual_vars)
     }
   })
   
@@ -263,22 +211,7 @@ server <- function(input, output, session) {
     req(data(), input$quant_var)
     df <- data()
     var <- df[[input$quant_var]]
-    
-    stats <- list(
-      Media = mean(var, na.rm = TRUE),
-      Mediana = median(var, na.rm = TRUE),
-      Moda = {
-        uniq <- unique(var)
-        uniq[which.max(tabulate(match(var, uniq)))]
-      },
-      Mínimo = min(var, na.rm = TRUE),
-      Máximo = max(var, na.rm = TRUE),
-      Rango = diff(range(var, na.rm = TRUE)),
-      Desv_Est = sd(var, na.rm = TRUE),
-      Coef_Var = sd(var, na.rm = TRUE)/mean(var, na.rm = TRUE)*100
-    )
-    
-    return(stats)
+    resumen(var)
   })
   
   output$descriptive_stats <- renderTable({
@@ -413,9 +346,9 @@ server <- function(input, output, session) {
     req(data())
     qual_vars <- names(data())[var_types() == "Cualitativa"]
     tagList(
-      selectInput("qual_var1", "Variable 1:", choices = qual_vars),
+      select_var("qual_var1", "Variable 1:", qual_vars),
       if(input$qual_test != "Binomial") {
-        selectInput("qual_var2", "Variable 2:", choices = qual_vars)
+        select_var("qual_var2", "Variable 2:", qual_vars)
       }
     )
   })

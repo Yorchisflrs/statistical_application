@@ -1,0 +1,12 @@
+name: statistical_app
+title: statistical_app
+username: yorchisyorch
+account: yorchisyorch
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14573247
+bundleId: 10153646
+url: https://yorchisyorch.shinyapps.io/statistical_app/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
