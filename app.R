@@ -9,9 +9,10 @@ library(ggplot2)
 library(DT)
 library(report)
 library(stats)
-library(effectsize)  # Para pruebas adicionales
-library(rstatix)     # Para G-test y otras pruebas
-library(DescTools)   # Para Coeficiente de contingencia
+library(effectsize)
+library(rstatix)
+library(DescTools)
+library(car) # Para prueba de Levene
 
 # ---------------------------
 # INTERFAZ DE USUARIO (UI)
@@ -31,7 +32,8 @@ ui <- navbarPage(
                             selected = ","),
                radioButtons("dec", "Decimal:", 
                             choices = c(Punto = ".", Coma = ","),
-                            selected = ".")
+                            selected = "."),
+               actionButton("load_sample", "Cargar Datos de Ejemplo", class = "btn-info")
              ),
              mainPanel(
                DTOutput("data_preview"),
@@ -63,13 +65,24 @@ ui <- navbarPage(
                  condition = "input.quant_test == 'Pearson' | input.quant_test == 'Spearman'",
                  uiOutput("quant_var2_selector")
                ),
-               actionButton("run_quant", "Ejecutar", class = "btn-primary")
+               actionButton("run_quant", "Ejecutar Análisis", class = "btn-primary")
              ),
              mainPanel(
                uiOutput("quant_theory"),
-               plotOutput("quant_plot"),
+               h3("Medidas Descriptivas"),
+               tableOutput("descriptive_stats"),
+               h3("Resultado de la Prueba"),
                verbatimTextOutput("quant_results"),
-               uiOutput("quant_interpretation")
+               h3("Interpretación Estadística"),
+               uiOutput("quant_interpretation"),
+               h3("Gráfico Inferencial"),
+               plotOutput("quant_plot"),
+               h3("Validación de Supuestos"),
+               uiOutput("test_assumptions"),
+               h3("Efectos Principales e Interacciones"),
+               tableOutput("anova_effects"),
+               h3("Post-hoc"),
+               tableOutput("anova_posthoc")
              )
            )),
   
@@ -91,13 +104,20 @@ ui <- navbarPage(
                  condition = "input.qual_test != 'Binomial'",
                  uiOutput("qual_var2_selector")
                ),
-               actionButton("run_qual", "Ejecutar", class = "btn-primary")
+               actionButton("run_qual", "Ejecutar Análisis", class = "btn-primary")
              ),
              mainPanel(
                uiOutput("qual_theory"),
-               plotOutput("qual_plot"),
+               h3("Distribución de Frecuencias"),
+               tableOutput("freq_table"),
+               h3("Resultado de la Prueba"),
                verbatimTextOutput("qual_results"),
-               uiOutput("qual_interpretation")
+               h3("Interpretación Estadística"),
+               uiOutput("qual_interpretation"),
+               h3("Visualización"),
+               plotOutput("qual_plot"),
+               h3("Validación de Supuestos"),
+               uiOutput("qual_assumptions")
              )
            )),
   
@@ -108,16 +128,20 @@ ui <- navbarPage(
                numericInput("n_samples", "Número de muestras:", 100, min = 30),
                numericInput("sample_size", "Tamaño de muestra:", 30, min = 10),
                selectInput("dist_type", "Distribución:", 
-                           choices = c("Normal", "Exponencial", "Uniforme"))
+                           choices = c("Normal", "Exponencial", "Uniforme")),
+               actionButton("run_clt", "Simular", class = "btn-success")
              ),
              mainPanel(
                plotOutput("clt_plot"),
-               htmlOutput("clt_explanation")
+               htmlOutput("clt_explanation"),
+               h3("Estadísticos Descriptivos"),
+               verbatimTextOutput("clt_stats")
              )
            )),
   
   # Pestaña 5: Documentación
-  tabPanel("Guía", includeMarkdown("www/instructions.md"))
+  tabPanel("Guía",
+           includeMarkdown("www/instructions.md"))
 )
 
 # ---------------------------
@@ -125,23 +149,59 @@ ui <- navbarPage(
 # ---------------------------
 server <- function(input, output, session) {
   
-  # Reactive: Carga de datos
+  # --- FUNCIONES AUXILIARES MODULARES ---
+  validate_vars <- function(var1, var2 = NULL, type1 = NULL, type2 = NULL, data) {
+    if (!is.null(var2) && var1 == var2) {
+      stop("No selecciones la misma variable como dependiente e independiente.")
+    }
+    if (!is.null(type1) && !inherits(data[[var1]], type1)) {
+      stop(paste("La variable", var1, "debe ser de tipo", type1))
+    }
+    if (!is.null(var2) && !is.null(type2) && !inherits(data[[var2]], type2)) {
+      stop(paste("La variable", var2, "debe ser de tipo", type2))
+    }
+  }
+  
+  anova_formula <- function(dep, factors, interacciones = FALSE) {
+    if (interacciones && length(factors) > 1) {
+      rhs <- paste(factors, collapse = "*")
+    } else {
+      rhs <- paste(factors, collapse = "+")
+    }
+    as.formula(paste(dep, "~", rhs))
+  }
+  
+  addTooltip <- function(id, text) {
+    tags$script(HTML(sprintf('$("#%s").attr("title", "%s");', id, text)))
+  }
+  
+  # Carga de datos reactiva
   data <- reactive({
-    req(input$file)
-    ext <- tools::file_ext(input$file$name)
-    
-    tryCatch({
-      switch(ext,
-             "csv" = read_delim(input$file$datapath, delim = input$sep, locale = locale(decimal_mark = input$dec)),
-             "xlsx" = read_excel(input$file$datapath),
-             "txt" = read_delim(input$file$datapath, delim = input$sep))
-    }, error = function(e) {
-      showNotification("Error al leer el archivo. Verifica el formato.", type = "error")
-      return(NULL)
-    })
+    if (input$load_sample > 0) {
+      data.frame(
+        Grupo = rep(c("Control", "Tratamiento"), each = 20),
+        Puntuacion = c(rnorm(20, mean = 50, sd = 5), rnorm(20, mean = 55, sd = 5)),
+        Edad = sample(18:65, 40, replace = TRUE),
+        Satisfaccion = factor(sample(c("Baja", "Media", "Alta"), 40, replace = TRUE)),
+        stringsAsFactors = TRUE
+      )
+    } else {
+      req(input$file)
+      ext <- tools::file_ext(input$file$name)
+      
+      tryCatch({
+        switch(ext,
+               "csv" = read_delim(input$file$datapath, delim = input$sep, 
+                                  locale = locale(decimal_mark = input$dec)),
+               "xlsx" = read_excel(input$file$datapath),
+               "txt" = read_delim(input$file$datapath, delim = input$sep))
+      }, error = function(e) {
+        showNotification("Error al leer el archivo. Verifica el formato.", type = "error")
+        return(NULL)
+      })
+    }
   })
   
-  # Detección de tipos de variables
   var_types <- reactive({
     req(data())
     sapply(data(), function(x) {
@@ -154,7 +214,8 @@ server <- function(input, output, session) {
   # ---------------------------
   output$data_preview <- renderDT({
     req(data())
-    datatable(head(data(), 10), options = list(scrollX = TRUE))
+    datatable(head(data(), 10), 
+              options = list(scrollX = TRUE, dom = 't'))
   })
   
   output$data_summary <- renderUI({
@@ -172,47 +233,95 @@ server <- function(input, output, session) {
   output$quant_var_selector <- renderUI({
     req(data())
     quant_vars <- names(data())[var_types() == "Cuantitativa"]
-    selectInput("quant_var", "Variable numérica:", choices = quant_vars)
+    tagList(
+      selectInput("quant_var", "Variable numérica:", choices = quant_vars),
+      addTooltip("quant_var", "Selecciona la variable dependiente numérica.")
+    )
   })
   
   output$quant_var2_selector <- renderUI({
     req(data())
     quant_vars <- names(data())[var_types() == "Cuantitativa"]
-    selectInput("quant_var2", "Segunda variable:", choices = quant_vars)
+    selectInput("quant_var2", "Segunda variable:", choices = setdiff(quant_vars, input$quant_var))
   })
   
   output$group_var_selector <- renderUI({
     req(data())
     qual_vars <- names(data())[var_types() == "Cualitativa"]
-    selectInput("group_var", "Variable de agrupación:", choices = qual_vars)
+    if (input$quant_test == "ANOVA") {
+      tagList(
+        selectInput("group_var", "Variables de agrupación (factores):", choices = qual_vars, multiple = TRUE),
+        checkboxInput("anova_inter", "Incluir interacciones (A*B)", value = FALSE),
+        addTooltip("group_var", "Selecciona uno o más factores (variables cualitativas)")
+      )
+    } else {
+      selectInput("group_var", "Variable de agrupación:", choices = qual_vars)
+    }
   })
+  
+  descriptive_stats <- reactive({
+    req(data(), input$quant_var)
+    df <- data()
+    var <- df[[input$quant_var]]
+    
+    stats <- list(
+      Media = mean(var, na.rm = TRUE),
+      Mediana = median(var, na.rm = TRUE),
+      Moda = {
+        uniq <- unique(var)
+        uniq[which.max(tabulate(match(var, uniq)))]
+      },
+      Mínimo = min(var, na.rm = TRUE),
+      Máximo = max(var, na.rm = TRUE),
+      Rango = diff(range(var, na.rm = TRUE)),
+      Desv_Est = sd(var, na.rm = TRUE),
+      Coef_Var = sd(var, na.rm = TRUE)/mean(var, na.rm = TRUE)*100
+    )
+    
+    return(stats)
+  })
+  
+  output$descriptive_stats <- renderTable({
+    stats <- descriptive_stats()
+    data.frame(
+      Medida = names(stats),
+      Valor = format(unlist(stats), digits = 4),
+      stringsAsFactors = FALSE
+    )
+  }, striped = TRUE, align = 'c', width = '100%')
   
   quant_test_result <- eventReactive(input$run_quant, {
     req(input$quant_test, input$quant_var)
-    
     tryCatch({
       if(input$quant_test == "t-test") {
         req(input$group_var)
-        t.test(data()[[input$quant_var]] ~ data()[[input$group_var]])
+        validate_vars(input$quant_var, input$group_var, "numeric", "factor", data())
+        t.test(data()[[input$quant_var]] ~ data()[[input$group_var]], na.action = na.omit)
       } else if(input$quant_test == "ANOVA") {
         req(input$group_var)
-        aov(data()[[input$quant_var]] ~ data()[[input$group_var]])
+        validate_vars(input$quant_var, NULL, "numeric", NULL, data())
+        formula <- anova_formula(input$quant_var, input$group_var, interacciones = input$anova_inter)
+        aov(formula, data = data(), na.action = na.omit)
       } else if(input$quant_test == "Wilcoxon") {
         req(input$group_var)
-        wilcox.test(data()[[input$quant_var]] ~ data()[[input$group_var]])
+        validate_vars(input$quant_var, input$group_var, "numeric", "factor", data())
+        wilcox.test(data()[[input$quant_var]] ~ data()[[input$group_var]], na.action = na.omit)
       } else if(input$quant_test == "Pearson") {
         req(input$quant_var2)
-        cor.test(data()[[input$quant_var]], data()[[input$quant_var2]], method = "pearson")
+        validate_vars(input$quant_var, input$quant_var2, "numeric", "numeric", data())
+        cor.test(data()[[input$quant_var]], data()[[input$quant_var2]], method = "pearson", use = "complete.obs")
       } else if(input$quant_test == "Spearman") {
         req(input$quant_var2)
-        cor.test(data()[[input$quant_var]], data()[[input$quant_var2]], method = "spearman")
+        validate_vars(input$quant_var, input$quant_var2, "numeric", "numeric", data())
+        cor.test(data()[[input$quant_var]], data()[[input$quant_var2]], method = "spearman", use = "complete.obs")
       } else if(input$quant_test == "Shapiro-Wilk") {
-        shapiro.test(data()[[input$quant_var]])
+        shapiro.test(na.omit(data()[[input$quant_var]]))
       } else if(input$quant_test == "Kolmogorov-Smirnov") {
-        ks.test(data()[[input$quant_var]], "pnorm")
+        ks.test(na.omit(data()[[input$quant_var]]), "pnorm")
       } else if(input$quant_test == "Kruskal-Wallis") {
         req(input$group_var)
-        kruskal.test(data()[[input$quant_var]] ~ data()[[input$group_var]])
+        validate_vars(input$quant_var, input$group_var, "numeric", "factor", data())
+        kruskal.test(data()[[input$quant_var]] ~ data()[[input$group_var]], na.action = na.omit)
       } else if(input$quant_test == "Friedman") {
         req(input$group_var)
         friedman.test(data()[[input$quant_var]], data()[[input$group_var]])
@@ -223,41 +332,78 @@ server <- function(input, output, session) {
     })
   })
   
-  output$quant_plot <- renderPlot({
-    req(input$quant_test, input$quant_var, data())
-    
-    if(input$quant_test %in% c("t-test", "ANOVA", "Wilcoxon", "Kruskal-Wallis")) {
-      req(input$group_var)
-      ggplot(data(), aes_string(x = input$group_var, y = input$quant_var)) + 
-        geom_boxplot() + 
-        labs(title = paste("Diagrama de Cajas -", input$quant_test)) +
-        theme_minimal()
-    } else if(input$quant_test %in% c("Pearson", "Spearman")) {
-      req(input$quant_var2)
-      ggplot(data(), aes_string(x = input$quant_var, y = input$quant_var2)) + 
-        geom_point() + 
-        geom_smooth(method = "lm") +
-        labs(title = paste("Correlación -", input$quant_test)) +
-        theme_minimal()
-    } else if(input$quant_test == "Shapiro-Wilk") {
-      ggplot(data(), aes_string(sample = input$quant_var)) + 
-        stat_qq() + 
-        stat_qq_line() +
-        labs(title = "Q-Q Plot para Normalidad") +
-        theme_minimal()
-    }
-  })
-  
   output$quant_results <- renderPrint({
     req(quant_test_result())
     print(quant_test_result())
   })
   
+  output$anova_effects <- renderTable({
+    req(input$quant_test == "ANOVA", quant_test_result())
+    summary(quant_test_result())[[1]]
+  }, rownames = TRUE)
+  
+  output$anova_posthoc <- renderTable({
+    req(input$quant_test == "ANOVA", quant_test_result())
+    if (any(summary(quant_test_result())[[1]][["Pr(>F)"]] < 0.05, na.rm = TRUE)) {
+      as.data.frame(TukeyHSD(quant_test_result()))
+    }
+  }, rownames = TRUE)
+  
   output$quant_interpretation <- renderUI({
     req(quant_test_result())
-    HTML(paste("<div class='alert alert-info'>", 
-               paste(capture.output(report(quant_test_result())), collapse = "<br>"), 
-               "</div>"))
+    res <- quant_test_result()
+    pval <- NULL
+    if (!is.null(res$p.value)) {
+      pval <- res$p.value
+    } else if (!is.null(res[["Pr(>F)"]])) {
+      pval <- res[["Pr(>F)"]][1]
+    }
+    effect <- tryCatch({
+      if (inherits(res, "htest")) effectsize::interpret_r(res$estimate) else NULL
+    }, error = function(e) NULL)
+    interp <- tryCatch({
+      paste(capture.output(report(res)), collapse = "<br>")
+    }, error = function(e) {
+      "<i>No se pudo generar interpretación automática. Consulte el resultado numérico.</i>"
+    })
+    html <- paste0(
+      if (!is.null(pval)) paste0("<b>p-value:</b> ", format(pval, digits=4), "<br>") else "",
+      if (!is.null(effect)) paste0("<b>Tamaño del efecto:</b> ", effect, "<br>") else "",
+      interp
+    )
+    HTML(paste("<div class='well'>", html, "</div>"))
+  })
+  
+  output$quant_plot <- renderPlot({
+    req(input$quant_test, input$quant_var, data())
+    if(input$quant_test %in% c("t-test", "ANOVA", "Wilcoxon", "Kruskal-Wallis")) {
+      req(input$group_var)
+      ggplot(data(), aes_string(x = input$group_var, y = input$quant_var)) + 
+        geom_boxplot(fill = "#0055A4", alpha = 0.7) + 
+        stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "#FFDD00") +
+        labs(title = paste("Comparación de grupos -", input$quant_var),
+             subtitle = "Cuadro amarillo = media, Caja = IQR",
+             x = "Grupo", y = input$quant_var) +
+        theme_minimal(base_size = 15) +
+        theme(plot.title = element_text(face = "bold"))
+    } else if(input$quant_test %in% c("Pearson", "Spearman")) {
+      req(input$quant_var2)
+      ggplot(data(), aes_string(x = input$quant_var, y = input$quant_var2)) + 
+        geom_point(color = "#0055A4", alpha = 0.7) + 
+        geom_smooth(method = "lm", color = "#FFDD00", se = TRUE) +
+        labs(title = paste("Correlación", input$quant_test),
+             subtitle = paste("Entre", input$quant_var, "y", input$quant_var2),
+             x = input$quant_var, y = input$quant_var2) +
+        theme_minimal(base_size = 15)
+    } else if(input$quant_test == "Shapiro-Wilk") {
+      ggplot(data(), aes_string(sample = input$quant_var)) + 
+        stat_qq(color = "#0055A4") + 
+        stat_qq_line(color = "#FFDD00") +
+        labs(title = "Gráfico Q-Q para normalidad",
+             subtitle = paste("Variable:", input$quant_var),
+             x = "Cuantiles teóricos", y = "Cuantiles muestrales") +
+        theme_minimal(base_size = 15)
+    }
   })
   
   # ---------------------------
@@ -274,6 +420,20 @@ server <- function(input, output, session) {
     )
   })
   
+  output$freq_table <- renderTable({
+    req(input$qual_var1, data())
+    
+    if(input$qual_test == "Binomial") {
+      tab <- table(data()[[input$qual_var1]])
+      prop <- prop.table(tab)
+      cbind(Frecuencia = tab, Proporcion = round(prop, 4))
+    } else {
+      req(input$qual_var2)
+      tab <- table(data()[[input$qual_var1]], data()[[input$qual_var2]])
+      addmargins(tab)
+    }
+  }, rownames = TRUE)
+  
   qual_test_result <- eventReactive(input$run_qual, {
     req(input$qual_test, input$qual_var1)
     
@@ -289,7 +449,10 @@ server <- function(input, output, session) {
       } else if(input$qual_test == "Coef.Contingencia") {
         req(input$qual_var2)
         ct <- table(data()[[input$qual_var1]], data()[[input$qual_var2]])
-        ContCoef(ct)
+        list(
+          Coefficient = ContCoef(ct),
+          ChiSquared = chisq.test(ct)
+        )
       } else if(input$qual_test == "G-test") {
         req(input$qual_var2)
         DescTools::GTest(table(data()[[input$qual_var1]], data()[[input$qual_var2]]))
@@ -306,23 +469,6 @@ server <- function(input, output, session) {
     })
   })
   
-  output$qual_plot <- renderPlot({
-    req(input$qual_test, input$qual_var1, data())
-    
-    if(input$qual_test != "Binomial") {
-      req(input$qual_var2)
-      ggplot(data(), aes_string(x = input$qual_var1, fill = input$qual_var2)) + 
-        geom_bar(position = "dodge") + 
-        labs(title = paste("Distribución Conjunta -", input$qual_test)) +
-        theme_minimal()
-    } else {
-      ggplot(data(), aes_string(x = input$qual_var1)) + 
-        geom_bar() + 
-        labs(title = paste("Distribución de Frecuencias -", input$qual_test)) +
-        theme_minimal()
-    }
-  })
-  
   output$qual_results <- renderPrint({
     req(qual_test_result())
     print(qual_test_result())
@@ -330,28 +476,119 @@ server <- function(input, output, session) {
   
   output$qual_interpretation <- renderUI({
     req(qual_test_result())
-    HTML(paste("<div class='alert alert-info'>", 
+    HTML(paste("<div class='well'>", 
                paste(capture.output(report(qual_test_result())), collapse = "<br>"), 
                "</div>"))
+  })
+  
+  output$qual_plot <- renderPlot({
+    req(input$qual_test, input$qual_var1, data())
+    
+    if(input$qual_test == "Binomial") {
+      ggplot(data(), aes_string(x = input$qual_var1)) + 
+        geom_bar(fill = "steelblue", alpha = 0.7) + 
+        labs(title = paste("Distribución de", input$qual_var1),
+             x = input$qual_var1, y = "Frecuencia") +
+        theme_minimal()
+    } else {
+      req(input$qual_var2)
+      ggplot(data(), aes_string(x = input$qual_var1, fill = input$qual_var2)) + 
+        geom_bar(position = "dodge") + 
+        labs(title = paste("Distribución conjunta de", input$qual_var1, "y", input$qual_var2),
+             x = input$qual_var1, y = "Frecuencia", fill = input$qual_var2) +
+        scale_fill_brewer(palette = "Set2") +
+        theme_minimal()
+    }
+  })
+  
+  output$qual_assumptions <- renderUI({
+    req(input$qual_test, input$qual_var1)
+    
+    assumptions <- switch(input$qual_test,
+                          "Chi-cuadrado" = {
+                            req(input$qual_var2)
+                            tab <- table(data()[[input$qual_var1]], data()[[input$qual_var2]])
+                            exp <- chisq.test(tab)$expected
+                            viol <- sum(exp < 5)/length(exp)*100
+                            
+                            tagList(
+                              h4("Supuestos para Chi-cuadrado:"),
+                              p(strong("1. Frecuencias esperadas:")),
+                              p(paste(round(viol, 1), "% de celdas con frecuencias esperadas < 5")),
+                              if(viol > 20) {
+                                p("❌ Demasiadas celdas con frecuencias bajas (considerar prueba exacta de Fisher)", 
+                                  style = "color:red;")
+                              } else if(viol > 0) {
+                                p("⚠️ Algunas celdas con frecuencias bajas (podría afectar resultados)", 
+                                  style = "color:orange;")
+                              } else {
+                                p("✅ Todas las celdas tienen frecuencias adecuadas", 
+                                  style = "color:green;")
+                              },
+                              
+                              p(strong("2. Independencia de observaciones:")),
+                              p("✅ Las observaciones deben ser independientes")
+                            )
+                          },
+                          "Fisher" = {
+                            tagList(
+                              h4("Supuestos para prueba exacta de Fisher:"),
+                              p("1. ✅ Datos categóricos"),
+                              p("2. ✅ Muestras pequeñas o frecuencias esperadas < 5"),
+                              p("3. ✅ Tablas 2x2 o pequeñas")
+                            )
+                          },
+                          "Binomial" = {
+                            tagList(
+                              h4("Supuestos para prueba binomial:"),
+                              p("1. ✅ Dos categorías mutuamente excluyentes"),
+                              p("2. ✅ Ensayos independientes"),
+                              p("3. ✅ Probabilidad constante en cada ensayo")
+                            )
+                          }
+    )
+    
+    return(assumptions)
   })
   
   # ---------------------------
   # MÓDULO: TEOREMA LÍMITE CENTRAL
   # ---------------------------
-  output$clt_plot <- renderPlot({
+  clt_simulation <- eventReactive(input$run_clt, {
+    req(input$n_samples, input$sample_size, input$dist_type)
+    
     means <- replicate(input$n_samples, {
       sample <- switch(input$dist_type,
                        "Normal" = rnorm(input$sample_size),
                        "Exponencial" = rexp(input$sample_size),
-                       "Uniforme" = runif(input$sample_size))
+                       "Uniforme" = runif(input$sample_size, min = 0, max = 1))
       mean(sample)
     })
     
+    return(means)
+  })
+  
+  output$clt_plot <- renderPlot({
+    means <- clt_simulation()
+    
     ggplot(data.frame(means), aes(x = means)) + 
-      geom_histogram(binwidth = 0.1, fill = "#3498db", color = "white") + 
+      geom_histogram(aes(y = ..density..), binwidth = 0.1, fill = "steelblue", alpha = 0.7) + 
+      stat_function(fun = dnorm, 
+                    args = list(mean = mean(means), sd = sd(means)),
+                    color = "red", size = 1) +
       labs(title = "Distribución de Medias Muestrales (TLC)",
-           x = "Media Muestral", y = "Frecuencia") +
+           subtitle = paste("Distribución original:", input$dist_type),
+           x = "Media Muestral", y = "Densidad") +
       theme_minimal()
+  })
+  
+  output$clt_stats <- renderPrint({
+    means <- clt_simulation()
+    cat("Media de medias:", mean(means), "\n")
+    cat("Desviación estándar de medias:", sd(means), "\n")
+    cat("Error estándar teórico:", sd(means)/sqrt(input$sample_size), "\n")
+    cat("\nPrueba de normalidad (Shapiro-Wilk):\n")
+    print(shapiro.test(means))
   })
   
   output$clt_explanation <- renderUI({
@@ -359,8 +596,12 @@ server <- function(input, output, session) {
       "<h4>Teorema del Límite Central</h4>",
       "<p>Independientemente de la distribución original, la distribución de las medias muestrales",
       "se aproxima a una distribución normal cuando el tamaño de muestra es grande (n ≥ 30).</p>",
-      "<p><strong>Ejemplo:</strong> Muestra cómo la media de", input$n_samples, "muestras de tamaño", 
-      input$sample_size, "de una distribución", input$dist_type, "converge a la normalidad.</p>"
+      "<p><strong>Parámetros actuales:</strong></p>",
+      "<ul>",
+      "<li>Número de muestras: ", input$n_samples, "</li>",
+      "<li>Tamaño de muestra: ", input$sample_size, "</li>",
+      "<li>Distribución original: ", input$dist_type, "</li>",
+      "</ul>"
     ))
   })
   
@@ -375,56 +616,36 @@ server <- function(input, output, session) {
         title = "Prueba t de Student",
         content = HTML(paste(
           "<h4>Compara las medias de dos grupos independientes.</h4>",
-          "<p><strong>Supuestos:</strong></p>",
+          "<p><strong>Tipos:</strong></p>",
           "<ul>",
-          "<li>Normalidad de los datos</li>",
-          "<li>Homogeneidad de varianzas</li>",
-          "<li>Observaciones independientes</li>",
-          "</ul>"
+          "<li><strong>t-test independiente:</strong> Para grupos no relacionados</li>",
+          "<li><strong>t-test pareado:</strong> Para medidas repetidas</li>",
+          "</ul>",
+          "<p><strong>Ejemplo:</strong> Comparar el rendimiento académico entre dos grupos (control vs tratamiento).</p>"
         ))
       ),
       "ANOVA" = list(
         title = "Análisis de Varianza",
         content = HTML(paste(
           "<h4>Compara las medias de tres o más grupos.</h4>",
-          "<p><strong>Supuestos:</strong></p>",
+          "<p><strong>Tipos:</strong></p>",
           "<ul>",
-          "<li>Normalidad de los datos</li>",
-          "<li>Homogeneidad de varianzas</li>",
-          "<li>Independencia de observaciones</li>",
-          "</ul>"
+          "<li><strong>ANOVA unidireccional:</strong> Un factor independiente</li>",
+          "<li><strong>ANOVA factorial:</strong> Múltiples factores</li>",
+          "</ul>",
+          "<p><strong>Ejemplo:</strong> Comparar el efecto de tres fertilizantes diferentes en el crecimiento de plantas.</p>"
         ))
       ),
       "Wilcoxon" = list(
         title = "Prueba de Wilcoxon",
         content = HTML(paste(
           "<h4>Versión no paramétrica de la prueba t.</h4>",
-          "<p><strong>Usar cuando:</strong></p>",
+          "<p><strong>Tipos:</strong></p>",
           "<ul>",
-          "<li>Los datos no son normales</li>",
-          "<li>Muestras pequeñas</li>",
-          "</ul>"
-        ))
-      ),
-      "Pearson" = list(
-        title = "Correlación de Pearson",
-        content = HTML(paste(
-          "<h4>Mide la relación lineal entre dos variables.</h4>",
-          "<p><strong>Rango:</strong> -1 (negativa perfecta) a 1 (positiva perfecta)</p>"
-        ))
-      ),
-      "Spearman" = list(
-        title = "Correlación de Spearman",
-        content = HTML(paste(
-          "<h4>Versión no paramétrica de Pearson.</h4>",
-          "<p>Usa rangos en lugar de valores originales.</p>"
-        ))
-      ),
-      "Shapiro-Wilk" = list(
-        title = "Prueba de Normalidad",
-        content = HTML(paste(
-          "<h4>Evalúa si los datos siguen una distribución normal.</h4>",
-          "<p>H0: Los datos son normales</p>"
+          "<li><strong>Wilcoxon rank-sum:</strong> Para muestras independientes</li>",
+          "<li><strong>Wilcoxon signed-rank:</strong> Para muestras pareadas</li>",
+          "</ul>",
+          "<p><strong>Ejemplo:</strong> Comparar rankings de satisfacción entre dos grupos cuando los datos no son normales.</p>"
         ))
       )
     )
@@ -432,7 +653,7 @@ server <- function(input, output, session) {
     if(input$quant_test %in% names(theories)) {
       theories[[input$quant_test]]$content
     } else {
-      HTML("<p>Seleccione una prueba para ver su teoría.</p>")
+      HTML("<div class='alert alert-info'><p>Seleccione una prueba para ver su teoría detallada.</p></div>")
     }
   })
   
@@ -444,36 +665,24 @@ server <- function(input, output, session) {
         title = "Prueba Chi-cuadrado",
         content = HTML(paste(
           "<h4>Prueba de independencia entre variables categóricas.</h4>",
-          "<p><strong>Supuestos:</strong></p>",
+          "<p><strong>Tipos:</strong></p>",
           "<ul>",
-          "<li>Frecuencias esperadas ≥ 5</li>",
-          "<li>Observaciones independientes</li>",
-          "</ul>"
+          "<li><strong>Chi-cuadrado de Pearson:</strong> Para tablas de contingencia</li>",
+          "<li><strong>Chi-cuadrado de bondad de ajuste:</strong> Comparar distribuciones</li>",
+          "</ul>",
+          "<p><strong>Ejemplo:</strong> Evaluar si existe asociación entre género y preferencia política.</p>"
         ))
       ),
       "Fisher" = list(
         title = "Prueba exacta de Fisher",
         content = HTML(paste(
           "<h4>Alternativa a Chi-cuadrado para muestras pequeñas.</h4>",
-          "<p><strong>Usar cuando:</strong></p>",
+          "<p><strong>Características:</strong></p>",
           "<ul>",
-          "<li>Frecuencias esperadas < 5</li>",
-          "<li>Tablas 2x2</li>",
-          "</ul>"
-        ))
-      ),
-      "Binomial" = list(
-        title = "Prueba Binomial",
-        content = HTML(paste(
-          "<h4>Compara proporciones observadas con las esperadas.</h4>",
-          "<p>Útil para pruebas de proporciones simples.</p>"
-        ))
-      ),
-      "Coef.Contingencia" = list(
-        title = "Coeficiente de Contingencia",
-        content = HTML(paste(
-          "<h4>Mide la asociación entre variables categóricas.</h4>",
-          "<p>Rango: 0 (no asociación) a 1 (asociación perfecta)</p>"
+          "<li>Especialmente útil para tablas 2x2</li>",
+          "<li>No requiere tamaño mínimo de muestra</li>",
+          "</ul>",
+          "<p><strong>Ejemplo:</strong> Analizar la relación entre un tratamiento médico raro y un efecto secundario.</p>"
         ))
       )
     )
@@ -481,47 +690,8 @@ server <- function(input, output, session) {
     if(input$qual_test %in% names(theories)) {
       theories[[input$qual_test]]$content
     } else {
-      HTML("<p>Seleccione una prueba para ver su teoría.</p>")
+      HTML("<div class='alert alert-info'><p>Seleccione una prueba para ver su teoría detallada.</p></div>")
     }
-  })
-  
-  # ---------------------------
-  # MANUAL DE USUARIO
-  # ---------------------------
-  output$manual_html <- renderUI({
-    HTML("
-      <h2>Guía de Usuario</h2>
-      <h3>Carga de Datos</h3>
-      <p>Formatos soportados: CSV, XLSX, TXT</p>
-      <p>Especifique el separador y tipo de decimal según su archivo</p>
-      
-      <h3>Análisis Cuantitativo</h3>
-      <ul>
-        <li><strong>t-test:</strong> Comparación de medias entre 2 grupos</li>
-        <li><strong>ANOVA:</strong> Comparación de medias entre 3+ grupos</li>
-        <li><strong>Wilcoxon:</strong> Versión no paramétrica del t-test</li>
-        <li><strong>Pearson:</strong> Correlación lineal</li>
-        <li><strong>Spearman:</strong> Correlación no paramétrica</li>
-        <li><strong>Shapiro-Wilk:</strong> Prueba de normalidad</li>
-        <li><strong>Kolmogorov-Smirnov:</strong> Otra prueba de normalidad</li>
-        <li><strong>Kruskal-Wallis:</strong> ANOVA no paramétrico</li>
-        <li><strong>Friedman:</strong> ANOVA para medidas repetidas</li>
-      </ul>
-      
-      <h3>Análisis Cualitativo</h3>
-      <ul>
-        <li><strong>Chi-cuadrado:</strong> Asociación entre variables categóricas</li>
-        <li><strong>Fisher:</strong> Para muestras pequeñas</li>
-        <li><strong>Binomial:</strong> Prueba de proporciones</li>
-        <li><strong>Coef.Contingencia:</strong> Medida de asociación</li>
-        <li><strong>G-test:</strong> Prueba de razón de verosimilitud</li>
-        <li><strong>McNemar:</strong> Para datos pareados</li>
-        <li><strong>Cochran-Q:</strong> Para múltiples muestras relacionadas</li>
-      </ul>
-      
-      <h3>Interpretaciones</h3>
-      <p>Todos los resultados incluyen interpretaciones automáticas usando el paquete <code>report</code>.</p>
-    ")
   })
 }
 
@@ -529,3 +699,4 @@ server <- function(input, output, session) {
 # EJECUTAR LA APLICACIÓN
 # ---------------------------
 shinyApp(ui, server)
+
