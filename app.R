@@ -16,6 +16,37 @@ get_types <- function(df) sapply(df, function(x) if(is.numeric(x)) "Cuantitativa
 # Función para resumen descriptivo
 resumen <- function(var) list(Media=mean(var,na.rm=T), Mediana=median(var,na.rm=T), Moda=unique(var)[which.max(tabulate(match(var,unique(var))))], Mínimo=min(var,na.rm=T), Máximo=max(var,na.rm=T), Rango=diff(range(var,na.rm=T)), Desv_Est=sd(var,na.rm=T), Coef_Var=sd(var,na.rm=T)/mean(var,na.rm=T)*100)
 
+# Función auxiliar para teoría
+teoria_list <- list(
+  cuant = list(
+    "t-test" = "Compara medias de dos grupos independientes.",
+    "ANOVA" = "Compara medias de tres o más grupos.",
+    "Wilcoxon" = "Versión no paramétrica de t-test.",
+    "Pearson" = "Correlación lineal para datos normales.",
+    "Spearman" = "Correlación no paramétrica.",
+    "Shapiro-Wilk" = "Prueba de normalidad para muestras pequeñas.",
+    "Kolmogorov-Smirnov" = "Prueba de normalidad alternativa.",
+    "Kruskal-Wallis" = "ANOVA no paramétrico.",
+    "Friedman" = "Para medidas repetidas/múltiples."
+  ),
+  cual = list(
+    "Chi-cuadrado" = "Asociación entre variables categóricas.",
+    "Fisher" = "Exacta para muestras pequeñas (2x2).",
+    "Binomial" = "Proporciones observadas vs esperadas.",
+    "Coef.Contingencia" = "Medida de asociación.",
+    "G-test" = "Prueba de razón de verosimilitud.",
+    "McNemar" = "Datos categóricos pareados.",
+    "Cochran-Q" = "Extensión de McNemar para múltiples grupos."
+  )
+)
+
+# Función para mostrar teoría
+teoria_ui <- function(tipo, test) {
+  txt <- teoria_list[[tipo]][[test]]
+  if (is.null(txt)) txt <- "Seleccione una prueba para ver su teoría." 
+  HTML(paste("<div class='alert alert-info'>", txt, "</div>"))
+}
+
 # ---------------------------
 # INTERFAZ DE USUARIO (UI)
 # ---------------------------
@@ -543,88 +574,12 @@ server <- function(input, output, session) {
   # ---------------------------
   output$quant_theory <- renderUI({
     req(input$quant_test)
-    
-    theories <- list(
-      "t-test" = list(
-        title = "Prueba t de Student",
-        content = HTML(paste(
-          "<h4>Compara las medias de dos grupos independientes.</h4>",
-          "<p><strong>Tipos:</strong></p>",
-          "<ul>",
-          "<li><strong>t-test independiente:</strong> Para grupos no relacionados</li>",
-          "<li><strong>t-test pareado:</strong> Para medidas repetidas</li>",
-          "</ul>",
-          "<p><strong>Ejemplo:</strong> Comparar el rendimiento académico entre dos grupos (control vs tratamiento).</p>"
-        ))
-      ),
-      "ANOVA" = list(
-        title = "Análisis de Varianza",
-        content = HTML(paste(
-          "<h4>Compara las medias de tres o más grupos.</h4>",
-          "<p><strong>Tipos:</strong></p>",
-          "<ul>",
-          "<li><strong>ANOVA unidireccional:</strong> Un factor independiente</li>",
-          "<li><strong>ANOVA factorial:</strong> Múltiples factores</li>",
-          "</ul>",
-          "<p><strong>Ejemplo:</strong> Comparar el efecto de tres fertilizantes diferentes en el crecimiento de plantas.</p>"
-        ))
-      ),
-      "Wilcoxon" = list(
-        title = "Prueba de Wilcoxon",
-        content = HTML(paste(
-          "<h4>Versión no paramétrica de la prueba t.</h4>",
-          "<p><strong>Tipos:</strong></p>",
-          "<ul>",
-          "<li><strong>Wilcoxon rank-sum:</strong> Para muestras independientes</li>",
-          "<li><strong>Wilcoxon signed-rank:</strong> Para muestras pareadas</li>",
-          "</ul>",
-          "<p><strong>Ejemplo:</strong> Comparar rankings de satisfacción entre dos grupos cuando los datos no son normales.</p>"
-        ))
-      )
-    )
-    
-    if(input$quant_test %in% names(theories)) {
-      theories[[input$quant_test]]$content
-    } else {
-      HTML("<div class='alert alert-info'><p>Seleccione una prueba para ver su teoría detallada.</p></div>")
-    }
+    teoria_ui("cuant", input$quant_test)
   })
   
   output$qual_theory <- renderUI({
     req(input$qual_test)
-    
-    theories <- list(
-      "Chi-cuadrado" = list(
-        title = "Prueba Chi-cuadrado",
-        content = HTML(paste(
-          "<h4>Prueba de independencia entre variables categóricas.</h4>",
-          "<p><strong>Tipos:</strong></p>",
-          "<ul>",
-          "<li><strong>Chi-cuadrado de Pearson:</strong> Para tablas de contingencia</li>",
-          "<li><strong>Chi-cuadrado de bondad de ajuste:</strong> Comparar distribuciones</li>",
-          "</ul>",
-          "<p><strong>Ejemplo:</strong> Evaluar si existe asociación entre género y preferencia política.</p>"
-        ))
-      ),
-      "Fisher" = list(
-        title = "Prueba exacta de Fisher",
-        content = HTML(paste(
-          "<h4>Alternativa a Chi-cuadrado para muestras pequeñas.</h4>",
-          "<p><strong>Características:</strong></p>",
-          "<ul>",
-          "<li>Especialmente útil para tablas 2x2</li>",
-          "<li>No requiere tamaño mínimo de muestra</li>",
-          "</ul>",
-          "<p><strong>Ejemplo:</strong> Analizar la relación entre un tratamiento médico raro y un efecto secundario.</p>"
-        ))
-      )
-    )
-    
-    if(input$qual_test %in% names(theories)) {
-      theories[[input$qual_test]]$content
-    } else {
-      HTML("<div class='alert alert-info'><p>Seleccione una prueba para ver su teoría detallada.</p></div>")
-    }
+    teoria_ui("cual", input$qual_test)
   })
 }
 
