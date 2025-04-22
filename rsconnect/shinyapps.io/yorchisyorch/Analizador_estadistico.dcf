@@ -1,0 +1,12 @@
+name: Analizador_estadistico
+title: Analizador_estadistico
+username: yorchisyorch
+account: yorchisyorch
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14576565
+bundleId: 10155610
+url: https://yorchisyorch.shinyapps.io/Analizador_estadistico/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

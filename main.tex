@@ -1,0 +1,150 @@
+\documentclass[12pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{graphics}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{cancel}
+\usepackage[spanish]{babel}
+\usepackage{hyperref}
+
+% Encabezado y pie de página profesional
+\pagestyle{fancy}
+\fancyhead[LO,L]{Estadistica Computacional}
+\fancyhead[CO,C]{Universidad Nacional del Altiplano}
+\fancyhead[RO,R]{\today}
+\fancyfoot[CO,C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\begin{document}
+
+% Portada
+\begin{center}
+    {\LARGE \textbf{Analizador Estadístico Pro}} \\[2mm]
+    \vspace{2mm}
+    \textbf{Aplicación Web para Análisis Estadístico en R Shiny} \\[5mm]
+    
+    \textbf{Repositorio GitHub:} \url{https://github.com/Yorchisflrs/statistical_application} \\[1mm]
+    \textbf{Aplicación en línea:} \url{https://yorchisyorch.shinyapps.io/Analizador_estadistico/} \\[8mm]
+    \textbf{Universidad Nacional del Altiplano} \\ Facultad de Ingeniería Estadística e Informática \\ Docente: Fred Torres Cruz \\ Autor: Flores Turpo Jorge Luis \\ Abril 2025
+\end{center}
+
+\vspace{8mm}
+
+\section*{Resumen}
+El \textbf{Analizador Estadístico Pro} es una aplicación web interactiva desarrollada en R Shiny que permite realizar análisis estadísticos descriptivos e inferenciales sobre datos cuantitativos y cualitativos, así como visualizar resultados y simular el Teorema del Límite Central. Está orientada a estudiantes, docentes e investigadores que requieran una herramienta intuitiva y potente para el análisis de datos.
+
+\section*{1. Características Principales}
+\begin{itemize}
+    \item Carga de datos en formatos CSV, TXT y Excel (XLSX).
+    \item Análisis de variables cuantitativas y cualitativas.
+    \item Pruebas estadísticas: t-test, ANOVA, Wilcoxon, Chi-cuadrado, Fisher, correlaciones, entre otras.
+    \item Visualización de resultados con gráficos interactivos.
+    \item Simulación del Teorema del Límite Central.
+    \item Interfaz amigable y documentación integrada.
+\end{itemize}
+
+\section*{2. Tecnologías Utilizadas}
+\begin{itemize}
+    \item \textbf{Lenguaje:} R
+    \item \textbf{Framework:} Shiny
+    \item \textbf{Librerías:} shiny, shinythemes, DT, ggplot2, readxl, stats
+    \item \textbf{Despliegue:} shinyapps.io
+\end{itemize}
+
+\section*{3. Instalación y Ejecución}
+\begin{enumerate}
+    \item Clona el repositorio:
+    \begin{verbatim}
+    git clone https://github.com/Yorchisflrs/statistical_application.git
+    cd statistical_application
+    \end{verbatim}
+    \item Instala las dependencias en R:
+    \begin{verbatim}
+    source("install_packages.R")
+    \end{verbatim}
+    \item Ejecuta la aplicación localmente:
+    \begin{verbatim}
+    shiny::runApp()
+    \end{verbatim}
+    \item Accede desde tu navegador a la dirección indicada por la consola (usualmente \texttt{http://127.0.0.1:xxxx}).
+\end{enumerate}
+
+\section*{4. Estructura del Proyecto}
+\begin{itemize}
+    \item \texttt{app.R}: Código principal de la aplicación Shiny.
+    \item \texttt{helpers.R}: Funciones auxiliares y lógica modular.
+    \item \texttt{install\_packages.R}: Script para instalar dependencias.
+    \item \texttt{www/}: Archivos estáticos (instrucciones, estilos).
+    \item \texttt{rsconnect/}: Configuración para despliegue en shinyapps.io.
+\end{itemize}
+
+\section*{5. Uso Básico}
+\begin{enumerate}
+    \item Sube o selecciona un archivo de datos (CSV, TXT, XLSX).
+    \item Elige el tipo de análisis (cuantitativo o cualitativo).
+    \item Selecciona la prueba estadística y las variables de interés.
+    \item Visualiza los resultados, gráficos e interpretaciones.
+    \item Consulta la documentación integrada para ayuda teórica y práctica.
+\end{enumerate}
+
+\section*{6. Contacto}
+\begin{itemize}
+    \item \textbf{Autor:} Flores Turpo Jorge Luis
+    \item \textbf{Correo:} \texttt{georgeflrs.024@gmail.com}
+    \item \textbf{Repositorio:} \url{https://github.com/Yorchisflrs/statistical_application}
+    \item \textbf{LinkedIn:} \url{https://www.linkedin.com/posts/yorch-flowers-148867361_rstats-shiny-datascience-activity-7320307560908005376-ex49?utm_source=share&utm_medium=member_desktop&rcm=ACoAAFoBhggB-6YN4SDV5OZLbhX1zWyy_3UW6-g}
+    \item \textbf{App en línea:} \url{https://yorchisyorch.shinyapps.io/Analizador_estadistico/}
+\end{itemize}
+
+\section*{7. Evidencia de Funcionamiento}
+
+A continuación se presentan capturas de pantalla que muestran el funcionamiento de la aplicación \textbf{Analizador Estadístico Pro}:
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{home.png}
+    \caption{Vista: Carga de datos y vista previa de la tabla.}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{home2.png}
+    \caption{Vista: Análisis cuantitativo.}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{home3.png}
+    \caption{Vista: Análisis cualitativo.}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{home4.png}
+    \caption{Vista: Simulación del Teorema del Límite Central.}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{home5.png}
+    \caption{Vista: Resultados y gráficos.}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{home6.png}
+    \caption{Vista: Guía de usuario integrada.}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{home7.png}
+    \caption{Vista: Otra funcionalidad relevante de la aplicación.}
+\end{figure}
+
+\clearpage
+
+\end{document}

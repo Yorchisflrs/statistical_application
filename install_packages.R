@@ -1,7 +1,6 @@
 # install_packages.R
 cran_packages <- c(
-  "shiny", "shinythemes", "readr", "readxl", "ggplot2", "DT",
-  "stats", "effectsize", "rstatix", "DescTools", "car"
+  "shiny", "shinythemes", "DT", "ggplot2", "stats", "readxl"
 )
 github_packages <- c("easystats/report")
 

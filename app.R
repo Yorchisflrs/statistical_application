@@ -1,16 +1,15 @@
-# ---------------------------
-# LIBRERÍAS REQUERIDAS
-# ---------------------------
+library(shiny)
+library(shinythemes)
+library(DT)
+library(ggplot2)
+library(stats)
+library(readxl)
 source("helpers.R")
-load_libs()
 
-# ---------------------------
 # INTERFAZ DE USUARIO (UI)
-# ---------------------------
 ui <- navbarPage(
   title = "Analizador Estadístico Pro",
   theme = shinytheme("flatly"),
-  
   # Pestaña 1: Carga de Datos
   tabPanel("Cargar Datos",
     sidebarLayout(
@@ -23,7 +22,6 @@ ui <- navbarPage(
       mainPanel(DTOutput("data_preview"), uiOutput("data_summary"))
     )
   ),
-  
   # Pestaña 2: Análisis Cuantitativo
   tabPanel("Cuantitativas",
     sidebarLayout(
@@ -45,7 +43,6 @@ ui <- navbarPage(
       )
     )
   ),
-  
   # Pestaña 3: Análisis Cualitativo
   tabPanel("Cualitativas",
     sidebarLayout(
@@ -64,7 +61,6 @@ ui <- navbarPage(
       )
     )
   ),
-  
   # Pestaña 4: Teorema Límite Central
   tabPanel("TLC",
     sidebarLayout(
@@ -81,10 +77,7 @@ ui <- navbarPage(
   # Pestaña 5: Documentación
   tabPanel("Guía", includeMarkdown("www/instructions.md"))
 )
-
-# ---------------------------
 # LÓGICA DEL SERVIDOR (SERVER)
-# ---------------------------
 server <- function(input, output, session) {
   
   # --- FUNCIONES AUXILIARES MODULARES ---
@@ -93,7 +86,6 @@ server <- function(input, output, session) {
   addTooltip <- function(id, text) {
     tags$script(HTML(sprintf('$("#%s").attr("title", "%s");', id, text)))
   }
-  
   # Carga de datos reactiva
   data <- reactive({
     if (input$load_sample > 0) {
@@ -106,14 +98,8 @@ server <- function(input, output, session) {
       )
     } else {
       req(input$file)
-      ext <- tools::file_ext(input$file$name)
-      
       tryCatch({
-        switch(ext,
-               "csv" = read_delim(input$file$datapath, delim = input$sep, 
-                                  locale = locale(decimal_mark = input$dec)),
-               "xlsx" = read_excel(input$file$datapath),
-               "txt" = read_delim(input$file$datapath, delim = input$sep))
+        read_data(input$file$datapath, input$sep, input$dec)
       }, error = function(e) {
         showNotification("Error al leer el archivo. Verifica el formato.", type = "error")
         return(NULL)
@@ -125,10 +111,7 @@ server <- function(input, output, session) {
     req(data())
     get_types(data())
   })
-  
-  # ---------------------------
   # MÓDULO: CARGA DE DATOS
-  # ---------------------------
   output$data_preview <- renderDT({
     req(data())
     datatable(head(data(), 10), 
@@ -143,10 +126,7 @@ server <- function(input, output, session) {
       p(strong("Cualitativas:"), paste(names(data())[var_types() == "Cualitativa"], collapse = ", "))
     )
   })
-  
-  # ---------------------------
   # MÓDULO: ANÁLISIS CUANTITATIVO
-  # ---------------------------
   output$quant_var_selector <- renderUI({
     req(data())
     quant_vars <- names(data())[var_types() == "Cuantitativa"]
@@ -260,18 +240,9 @@ server <- function(input, output, session) {
     } else if (!is.null(res[["Pr(>F)"]])) {
       pval <- res[["Pr(>F)"]][1]
     }
-    effect <- tryCatch({
-      if (inherits(res, "htest")) effectsize::interpret_r(res$estimate) else NULL
-    }, error = function(e) NULL)
-    interp <- tryCatch({
-      paste(capture.output(report(res)), collapse = "<br>")
-    }, error = function(e) {
-      "<i>No se pudo generar interpretación automática. Consulte el resultado numérico.</i>"
-    })
     html <- paste0(
       if (!is.null(pval)) paste0("<b>p-value:</b> ", format(pval, digits=4), "<br>") else "",
-      if (!is.null(effect)) paste0("<b>Tamaño del efecto:</b> ", effect, "<br>") else "",
-      interp
+      "<i>Interpretación automática no disponible. Consulte el resultado numérico.</i>"
     )
     HTML(paste("<div class='well'>", html, "</div>"))
   })
@@ -307,10 +278,7 @@ server <- function(input, output, session) {
         theme_minimal(base_size = 15)
     }
   })
-  
-  # ---------------------------
   # MÓDULO: ANÁLISIS CUALITATIVO
-  # ---------------------------
   output$qual_var_selector <- renderUI({
     req(data())
     qual_vars <- names(data())[var_types() == "Cualitativa"]
@@ -378,8 +346,8 @@ server <- function(input, output, session) {
   
   output$qual_interpretation <- renderUI({
     req(qual_test_result())
-    HTML(paste("<div class='well'>", 
-               paste(capture.output(report(qual_test_result())), collapse = "<br>"), 
+    HTML(paste("<div class='well'>",
+               "<i>Interpretación automática no disponible. Consulte el resultado numérico.</i>",
                "</div>"))
   })
   
@@ -449,13 +417,9 @@ server <- function(input, output, session) {
                             )
                           }
     )
-    
     return(assumptions)
   })
-  
-  # ---------------------------
   # MÓDULO: TEOREMA LÍMITE CENTRAL
-  # ---------------------------
   clt_simulation <- eventReactive(input$run_clt, {
     req(input$n_samples, input$sample_size, input$dist_type)
     
@@ -483,7 +447,7 @@ server <- function(input, output, session) {
            x = "Media Muestral", y = "Densidad") +
       theme_minimal()
   })
-  
+
   output$clt_stats <- renderPrint({
     means <- clt_simulation()
     cat("Media de medias:", mean(means), "\n")
@@ -506,10 +470,7 @@ server <- function(input, output, session) {
       "</ul>"
     ))
   })
-  
-  # ---------------------------
   # BASE DE DATOS DE TEORÍA
-  # ---------------------------
   output$quant_theory <- renderUI({
     req(input$quant_test)
     teoria_ui("cuant", input$quant_test)
@@ -520,6 +481,5 @@ server <- function(input, output, session) {
     teoria_ui("cual", input$qual_test)
   })
 }
-
 # EJECUTAR LA APLICACIÓN
 shinyApp(ui, server)

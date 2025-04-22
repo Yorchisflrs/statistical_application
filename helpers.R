@@ -2,17 +2,29 @@
 
 # Carga de librerías
 load_libs <- function() {
-  libs <- c("shiny", "shinythemes", "readr", "readxl", "ggplot2", "DT", "report", "stats", "effectsize", "rstatix", "DescTools", "car")
+  libs <- c("shiny", "shinythemes", "DT", "ggplot2", "stats", "readxl")
   invisible(lapply(libs, library, character.only = TRUE))
 }
 
 # Función para generar selectInput dinámico
-gen_select <- function(id, label, vars, multiple=FALSE) selectInput(id, label, choices=vars, multiple=multiple)
+gen_select <- function(id, label, vars, multiple=FALSE) shiny::selectInput(id, label, choices=vars, multiple=multiple)
 
 # Función para obtener tipo de variable
 get_types <- function(df) sapply(df, function(x) if(is.numeric(x)) "Cuantitativa" else "Cualitativa")
 
-# Función para resumen descriptivo
+# Función para leer archivos (soporta csv, txt, xlsx)
+read_data <- function(file, sep, dec) {
+  ext <- tools::file_ext(file)
+  if (ext == "csv" || ext == "txt") {
+    read.table(file, sep = sep, dec = dec, header = TRUE, stringsAsFactors = TRUE)
+  } else if (ext == "xlsx") {
+    readxl::read_excel(file)
+  } else {
+    stop("Solo se permiten archivos CSV, TXT o XLSX en este entorno.")
+  }
+}
+
+# Función para resumen descriptivo (sin rstatix ni DescTools)
 resumen <- function(var) list(Media=mean(var,na.rm=T), Mediana=median(var,na.rm=T), Moda=unique(var)[which.max(tabulate(match(var,unique(var))))], Mínimo=min(var,na.rm=T), Máximo=max(var,na.rm=T), Rango=diff(range(var,na.rm=T)), Desv_Est=sd(var,na.rm=T), Coef_Var=sd(var,na.rm=T)/mean(var,na.rm=T)*100)
 
 # Teoría centralizada
@@ -43,7 +55,7 @@ theory <- list(
 teoria_ui <- function(tipo, test) {
   txt <- theory[[tipo]][[test]]
   if (is.null(txt)) txt <- "Seleccione una prueba para ver su teoría."
-  HTML(paste("<div class='alert alert-info'>", txt, "</div>"))
+  shiny::HTML(paste("<div class='alert alert-info'>", txt, "</div>"))
 }
 
 # Validación de variables
@@ -57,4 +69,9 @@ default_validate <- function(var1, var2 = NULL, type1 = NULL, type2 = NULL, data
 anova_formula <- function(dep, factors, interacciones = FALSE) {
   rhs <- if (interacciones && length(factors) > 1) paste(factors, collapse = "*") else paste(factors, collapse = "+")
   as.formula(paste(dep, "~", rhs))
+}
+
+# Prueba de igualdad de varianzas (Levene simplificada con var.test)
+prueba_varianzas <- function(x, g) {
+  var.test(x ~ g)
 }
