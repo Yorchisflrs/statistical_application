@@ -1,51 +1,8 @@
 # ---------------------------
 # LIBRERÍAS REQUERIDAS
 # ---------------------------
-libs <- c("shiny", "shinythemes", "readr", "readxl", "ggplot2", "DT", "report", "stats", "effectsize", "rstatix", "DescTools", "car")
-lapply(libs, library, character.only = TRUE)
-
-# ---------------------------
-# FUNCIONES AUXILIARES
-# ---------------------------
-# Función para generar selectInput dinámico
-select_var <- function(id, label, vars, multiple=FALSE) selectInput(id, label, choices=vars, multiple=multiple)
-
-# Función para obtener tipo de variable
-get_types <- function(df) sapply(df, function(x) if(is.numeric(x)) "Cuantitativa" else "Cualitativa")
-
-# Función para resumen descriptivo
-resumen <- function(var) list(Media=mean(var,na.rm=T), Mediana=median(var,na.rm=T), Moda=unique(var)[which.max(tabulate(match(var,unique(var))))], Mínimo=min(var,na.rm=T), Máximo=max(var,na.rm=T), Rango=diff(range(var,na.rm=T)), Desv_Est=sd(var,na.rm=T), Coef_Var=sd(var,na.rm=T)/mean(var,na.rm=T)*100)
-
-# Función auxiliar para teoría
-teoria_list <- list(
-  cuant = list(
-    "t-test" = "Compara medias de dos grupos independientes.",
-    "ANOVA" = "Compara medias de tres o más grupos.",
-    "Wilcoxon" = "Versión no paramétrica de t-test.",
-    "Pearson" = "Correlación lineal para datos normales.",
-    "Spearman" = "Correlación no paramétrica.",
-    "Shapiro-Wilk" = "Prueba de normalidad para muestras pequeñas.",
-    "Kolmogorov-Smirnov" = "Prueba de normalidad alternativa.",
-    "Kruskal-Wallis" = "ANOVA no paramétrico.",
-    "Friedman" = "Para medidas repetidas/múltiples."
-  ),
-  cual = list(
-    "Chi-cuadrado" = "Asociación entre variables categóricas.",
-    "Fisher" = "Exacta para muestras pequeñas (2x2).",
-    "Binomial" = "Proporciones observadas vs esperadas.",
-    "Coef.Contingencia" = "Medida de asociación.",
-    "G-test" = "Prueba de razón de verosimilitud.",
-    "McNemar" = "Datos categóricos pareados.",
-    "Cochran-Q" = "Extensión de McNemar para múltiples grupos."
-  )
-)
-
-# Función para mostrar teoría
-teoria_ui <- function(tipo, test) {
-  txt <- teoria_list[[tipo]][[test]]
-  if (is.null(txt)) txt <- "Seleccione una prueba para ver su teoría." 
-  HTML(paste("<div class='alert alert-info'>", txt, "</div>"))
-}
+source("helpers.R")
+load_libs()
 
 # ---------------------------
 # INTERFAZ DE USUARIO (UI)
@@ -131,27 +88,8 @@ ui <- navbarPage(
 server <- function(input, output, session) {
   
   # --- FUNCIONES AUXILIARES MODULARES ---
-  validate_vars <- function(var1, var2 = NULL, type1 = NULL, type2 = NULL, data) {
-    if (!is.null(var2) && var1 == var2) {
-      stop("No selecciones la misma variable como dependiente e independiente.")
-    }
-    if (!is.null(type1) && !inherits(data[[var1]], type1)) {
-      stop(paste("La variable", var1, "debe ser de tipo", type1))
-    }
-    if (!is.null(var2) && !is.null(type2) && !inherits(data[[var2]], type2)) {
-      stop(paste("La variable", var2, "debe ser de tipo", type2))
-    }
-  }
-  
-  anova_formula <- function(dep, factors, interacciones = FALSE) {
-    if (interacciones && length(factors) > 1) {
-      rhs <- paste(factors, collapse = "*")
-    } else {
-      rhs <- paste(factors, collapse = "+")
-    }
-    as.formula(paste(dep, "~", rhs))
-  }
-  
+  validate_vars <- default_validate
+  anova_formula <- anova_formula
   addTooltip <- function(id, text) {
     tags$script(HTML(sprintf('$("#%s").attr("title", "%s");', id, text)))
   }
@@ -213,7 +151,7 @@ server <- function(input, output, session) {
     req(data())
     quant_vars <- names(data())[var_types() == "Cuantitativa"]
     tagList(
-      select_var("quant_var", "Variable numérica:", quant_vars),
+      gen_select("quant_var", "Variable numérica:", quant_vars),
       addTooltip("quant_var", "Selecciona la variable dependiente numérica.")
     )
   })
@@ -221,7 +159,7 @@ server <- function(input, output, session) {
   output$quant_var2_selector <- renderUI({
     req(data())
     quant_vars <- names(data())[var_types() == "Cuantitativa"]
-    select_var("quant_var2", "Segunda variable:", setdiff(quant_vars, input$quant_var))
+    gen_select("quant_var2", "Segunda variable:", setdiff(quant_vars, input$quant_var))
   })
   
   output$group_var_selector <- renderUI({
@@ -229,12 +167,12 @@ server <- function(input, output, session) {
     qual_vars <- names(data())[var_types() == "Cualitativa"]
     if (input$quant_test == "ANOVA") {
       tagList(
-        select_var("group_var", "Variables de agrupación (factores):", qual_vars, multiple = TRUE),
+        gen_select("group_var", "Variables de agrupación (factores):", qual_vars, multiple = TRUE),
         checkboxInput("anova_inter", "Incluir interacciones (A*B)", value = FALSE),
         addTooltip("group_var", "Selecciona uno o más factores (variables cualitativas)")
       )
     } else {
-      select_var("group_var", "Variable de agrupación:", qual_vars)
+      gen_select("group_var", "Variable de agrupación:", qual_vars)
     }
   })
   
@@ -377,9 +315,9 @@ server <- function(input, output, session) {
     req(data())
     qual_vars <- names(data())[var_types() == "Cualitativa"]
     tagList(
-      select_var("qual_var1", "Variable 1:", qual_vars),
+      gen_select("qual_var1", "Variable 1:", qual_vars),
       if(input$qual_test != "Binomial") {
-        select_var("qual_var2", "Variable 2:", qual_vars)
+        gen_select("qual_var2", "Variable 2:", qual_vars)
       }
     )
   })
@@ -583,8 +521,5 @@ server <- function(input, output, session) {
   })
 }
 
-# ---------------------------
 # EJECUTAR LA APLICACIÓN
-# ---------------------------
 shinyApp(ui, server)
-
